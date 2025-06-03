@@ -1,0 +1,13 @@
+{
+  "name": "ctm-observer",
+  "version": "0.1.0",
+  "type": "module",
+  "description": "Watches CTM agent/socket events over WebSocket and logs them",
+  "main": "src/index.js",
+  "scripts": {
+    "start": "node src/index.js"
+  },
+  "dependencies": {
+    "socket.io-client": "^4.7.5"
+  }
+}
