@@ -1,21 +1,26 @@
-// CTM WebSocket listener with socket.io, auth, headers, and post-connect subscriptions
 import { io } from 'socket.io-client';
 
-const CTM_AUTH_HOST      = `https://${process.env.CTM_AUTH_HOST}`;
-const CTM_SOCKET_HOST    = `https://${process.env.CTM_SOCKET_HOST}`;
-const CTM_TOKEN          = process.env.CTM_TOKEN;
-const CTM_SECRET         = process.env.CTM_SECRET;
-const CTM_ACCOUNT_ID     = process.env.CTM_ACCOUNT_ID;
+// Check environment variables
+['CTM_HOST', 'CTM_TOKEN', 'CTM_SECRET', 'CTM_ACCOUNT_ID'].forEach(varName => {
+  if (!process.env[varName]) {
+    throw new Error(`Environment variable ${varName} is not set.`);
+  }
+});
+
+const CTM_HOST = process.env.CTM_HOST;
+const CTM_TOKEN = process.env.CTM_TOKEN;
+const CTM_SECRET = process.env.CTM_SECRET;
+const CTM_ACCOUNT_ID = process.env.CTM_ACCOUNT_ID;
 
 async function fetchCapToken() {
   const base64Credentials = Buffer.from(`${CTM_TOKEN}:${CTM_SECRET}`).toString('base64');
-  const url = `${CTM_AUTH_HOST}/api/v1/accounts/${CTM_ACCOUNT_ID}/phone_access`;
+  const url = `https://${CTM_HOST}/api/v1/accounts/${CTM_ACCOUNT_ID}/phone_access`;
 
   const response = await fetch(url, {
     method: 'POST',
     headers: {
       'Content-Type': 'application/json',
-      'Authorization': `Basic ${base64Credentials}`
+      'Authorization': `Basic ${base64Credentials}`,
     },
   });
 
@@ -26,31 +31,29 @@ async function fetchCapToken() {
 
   const data = await response.json();
   console.log('[auth] Response:', data);
-  return {
-    capToken: data.token,
-    socketHost: CTM_SOCKET_HOST
-  };
+  return data.token;
 }
 
 async function startSocketListener() {
-  const { capToken, socketHost } = await fetchCapToken();
-  console.log('[connect] Using socketHost:', socketHost);
+  const cap_token = await fetchCapToken();
 
-  const socket = io(socketHost, {
+  if (!cap_token) {
+    throw new Error('CAP token is empty. Authentication failed.');
+  }
+
+  console.log('[connect] CTM_HOST:', CTM_HOST);
+  const wss = `wss://${CTM_HOST}`;
+  console.log('[connect] WebSocket URL:', wss);
+
+  const socket = io(wss, {
     transports: ['websocket'],
-    auth: {
-      cap_token: capToken,
-    },
+    auth: { cap_token },
   });
+  console.log('[+] Connecting to CTM WebSocket...');
 
   socket.on('connect', () => {
     console.log('[+] Socket.io connected.');
-
-    // Subscribe to account and phone streams
-    socket.emit('access.account', {
-      account: CTM_ACCOUNT_ID,
-      captoken: capToken
-    });
+    socket.emit('access.account', { account: CTM_ACCOUNT_ID, captoken: cap_token });
   });
 
   socket.on('message', (data) => {
@@ -68,7 +71,7 @@ async function startSocketListener() {
   });
 
   socket.on('connect_error', (err) => {
-    console.error('[!] Connection error:', err);
+    console.error('[!] Connection error:', err.message);
     if (err?.data) console.error('[!] Error data:', err.data);
   });
 }
